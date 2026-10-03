@@ -41,6 +41,18 @@ export class ZenerElm extends DiodeElm {
     }
     this.setup();
   }
+
+  override getElmType(): string {
+    return 'Zener diode';
+  }
+
+  protected override isZener(): boolean {
+    return true;
+  }
+
+  override getShortcut(): number {
+    return 'z'.charCodeAt(0);
+  }
 }
 
 export const ZenerElmType = elementType('ZenerElm', ZenerElm);

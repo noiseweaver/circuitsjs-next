@@ -8,7 +8,8 @@
 // License, or (at your option) any later version. See LICENSE.
 
 import { Point } from '@circuitjs-next/engine';
-import { CircuitElm, elementType } from '../CircuitElm.ts';
+import { CircuitElm, elementType, lineDistanceSq } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 
 export class WireElm extends CircuitElm {
   static readonly FLAG_SHOWCURRENT = 1;
@@ -74,6 +75,59 @@ export class WireElm extends CircuitElm {
     }
     if (n === 0) return -this.current;
     return this.current;
+  }
+
+  mustShowCurrent(): boolean {
+    return (this.flags & WireElm.FLAG_SHOWCURRENT) !== 0;
+  }
+  mustShowVoltage(): boolean {
+    return (this.flags & WireElm.FLAG_SHOWVOLTAGE) !== 0;
+  }
+  mustShowBusValue(): boolean {
+    return (this.flags & WireElm.FLAG_SHOW_BUS_VALUE) !== 0;
+  }
+  mustShowBusValueHex(): boolean {
+    return (this.flags & WireElm.FLAG_SHOW_BUS_VALUE_HEX) !== 0;
+  }
+
+  override getElmType(): string {
+    return this.busWidth > 1 ? 'bus wire (' + this.busWidth + ')' : 'wire';
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    if (n === 0) return EditInfo.createCheckbox('Show Current', this.mustShowCurrent());
+    if (n === 1) return EditInfo.createCheckbox('Show Voltage', this.mustShowVoltage());
+    if (n === 2) return EditInfo.createCheckbox('Show Bus Value', this.mustShowBusValue());
+    if (n === 3) return EditInfo.createCheckbox('Show Bus Value (Hex)', this.mustShowBusValueHex());
+    return null;
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    if (n === 0) {
+      if (ei.checkbox?.state === true) this.flags |= WireElm.FLAG_SHOWCURRENT;
+      else this.flags &= ~WireElm.FLAG_SHOWCURRENT;
+    }
+    if (n === 1) {
+      if (ei.checkbox?.state === true) this.flags |= WireElm.FLAG_SHOWVOLTAGE;
+      else this.flags &= ~WireElm.FLAG_SHOWVOLTAGE;
+    }
+    if (n === 2) this.flags = ei.changeFlag(this.flags, WireElm.FLAG_SHOW_BUS_VALUE);
+    if (n === 3) this.flags = ei.changeFlag(this.flags, WireElm.FLAG_SHOW_BUS_VALUE_HEX);
+  }
+
+  override getShortcut(): number {
+    return 'w'.charCodeAt(0);
+  }
+
+  // draggingDone() (splitting a new wire at posts it crosses) needs the element list; the
+  // editor does it.
+
+  /** Wires are only hit near the line itself. */
+  override getMouseDistance(gx: number, gy: number): number {
+    const thresh = 10;
+    const d2 = lineDistanceSq(this.x, this.y, this.x2, this.y2, gx, gy);
+    if (d2 <= thresh * thresh) return d2;
+    return -1;
   }
 }
 

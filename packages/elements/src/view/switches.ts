@@ -12,7 +12,7 @@ import {
   UNITS_FONT,
   type ElementView,
 } from './common.ts';
-import { calcLeads, interp, pt } from './geometry.ts';
+import { calcLeads, interp, pt, rectOf, type Rect } from './geometry.ts';
 
 const OPEN_HS = 16;
 
@@ -65,3 +65,9 @@ export const switchView: ElementView<SwitchElm> = {
   },
   bbox: (e) => elementBox(e, OPEN_HS),
 };
+
+/** Where a click toggles the switch rather than grabbing it (upstream `getSwitchRect`). */
+export function switchRect(e: SwitchElm): Rect {
+  const [lead1, lead2] = calcLeads(e.point1, e.point2, e.dn, 32);
+  return rectOf([lead1, lead2, interp(lead1, lead2, 0, OPEN_HS)]);
+}

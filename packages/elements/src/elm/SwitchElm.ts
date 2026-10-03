@@ -8,6 +8,7 @@
 // License, or (at your option) any later version. See LICENSE.
 
 import { CircuitElm, elementType } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 import { unescapeToken } from '../escape.ts';
 import { parseJavaBoolean, parseJavaInt } from '../java.ts';
 import type { StringTokenizer } from '../StringTokenizer.ts';
@@ -116,6 +117,62 @@ export class SwitchElm extends CircuitElm {
       else if (this.parent !== null)
         this.sim.stampResistor(this.nodes[0], this.nodes[1], SwitchElm.COMPOSITE_CLOSED_R);
     }
+  }
+
+  useIECSymbol(): boolean {
+    return (this.flags & SwitchElm.FLAG_IEC) !== 0;
+  }
+
+  override getElmType(): string {
+    return 'switch (SPST)';
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    if (n === 0) return EditInfo.createCheckbox('Momentary Switch', this.momentary);
+    if (n === 1) return EditInfo.createCheckbox('IEC Symbol', this.useIECSymbol());
+    if (n === 2) return EditInfo.text('Label (for linking)', this.label ?? '');
+    if (n === 3) return this.getKeyShortcutEditInfo();
+    if (n === 4) {
+      const ei = new EditInfo('On Resistance (ohms)', this.resistance);
+      ei.setNonNegative();
+      return ei;
+    }
+    return null;
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    if (n === 0) this.momentary = ei.checkbox?.state === true;
+    if (n === 1) {
+      this.flags = ei.changeFlag(this.flags, SwitchElm.FLAG_IEC);
+      this.setPoints();
+    }
+    if (n === 2) {
+      const label = ei.text ?? '';
+      if (label.length === 0) {
+        this.label = null;
+        this.flags &= ~SwitchElm.FLAG_LABEL;
+      } else {
+        this.label = label;
+        this.flags |= SwitchElm.FLAG_LABEL;
+      }
+    }
+    if (n === 3) this.setKeyShortcutEditValue(ei);
+    if (n === 4) this.resistance = ei.value;
+  }
+
+  // helper methods for keyboard shortcut edit field, usable by subclasses
+  getKeyShortcutEditInfo(): EditInfo {
+    return EditInfo.text('Keyboard Shortcut', this.keyShortcut ?? '');
+  }
+
+  setKeyShortcutEditValue(ei: EditInfo): void {
+    const s = (ei.text ?? '').trim();
+    if (s.length === 0) this.keyShortcut = null;
+    else this.keyShortcut = s.substring(0, 1).toLowerCase();
+  }
+
+  override getShortcut(): number {
+    return 's'.charCodeAt(0);
   }
 }
 

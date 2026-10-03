@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Ported from CircuitJS1 src/com/lushprojects/circuitjs1/client/DiodeModel.java (master) at
-// 5a707168778216bb6ed01bfdd62e8bbf7ae0a032. The edit dialog parts are left for Phase 5.
+// 5a707168778216bb6ed01bfdd62e8bbf7ae0a032. The model edit dialog is left for a later phase.
 // Copyright (C) Paul Falstad and Iain Sharp; port Copyright (C) circuitjs-next contributors.
 // This program is free software: you can redistribute it and/or modify it under the terms of the
 // GNU General Public License as published by the Free Software Foundation, either version 2 of the
@@ -10,6 +10,11 @@ import { escapeToken, unescapeToken } from '../escape.ts';
 import { parseJavaDouble, parseJavaInt } from '../java.ts';
 import { StringTokenizer } from '../StringTokenizer.ts';
 import type { XmlAttrReader, XmlDocWriter } from '../xml.ts';
+
+/** Java `String.compareTo` order on model names (UTF-16 code units), for the model lists. */
+function compareNames(a: { name: string }, b: { name: string }): number {
+  return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+}
 
 /** Electron thermal voltage at SPICE's default temperature of 27 C (300.15 K). */
 const vt = 0.025865;
@@ -113,6 +118,12 @@ export class DiodeModel {
 
   isSimple(): boolean {
     return (this.flags & DiodeModel.FLAGS_SIMPLE) !== 0;
+  }
+
+  /** Name and description, as the model choice lists them. */
+  getDescription(): string {
+    if (this.description === null) return this.name;
+    return this.name + ' (' + this.description + ')';
   }
 
   updateModel(): void {
@@ -238,6 +249,17 @@ export class DiodeModels {
     dm.readOnly = dm.oldStyle = true;
     dm.updateModel();
     return dm;
+  }
+
+  /** Models the user can pick (upstream `getModelList`), sorted by name; zener: only Zeners. */
+  getModelList(zener: boolean): DiodeModel[] {
+    const vector: DiodeModel[] = [];
+    for (const dm of this.modelMap.values()) {
+      if (dm.internal) continue;
+      if (zener && dm.breakdownVoltage === 0) continue;
+      if (!vector.includes(dm)) vector.push(dm);
+    }
+    return vector.sort(compareNames);
   }
 
   getDefaultModel(): DiodeModel {

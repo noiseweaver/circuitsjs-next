@@ -9,7 +9,8 @@
 
 import type { Point } from '@circuitjs-next/engine';
 import { CircuitElm, elementType } from '../CircuitElm.ts';
-import { parseJavaDouble } from '../java.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
+import { javaDoubleToInt, parseJavaDouble } from '../java.ts';
 import type { StringTokenizer } from '../StringTokenizer.ts';
 import type { XmlAttrReader, XmlAttrWriter } from '../xml.ts';
 
@@ -152,6 +153,63 @@ export class PotElm extends CircuitElm {
     this.resistance2 = this.maxResistance * (1 - this.position);
     this.sim.stampResistor(this.nodes[0], this.nodes[2], this.resistance1);
     this.sim.stampResistor(this.nodes[2], this.nodes[1], this.resistance2);
+  }
+
+  /**
+   * Upstream detaches the slider and attaches to the slider of another pot in the same group,
+   * if any; sliders are UI here, so only the group number changes.
+   */
+  setLink(newLink: number): void {
+    if (newLink === this.link) return;
+    this.link = newLink;
+    this.createSlider();
+  }
+
+  override getElmType(): string {
+    return 'potentiometer';
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    // ohmString doesn't work here on linux
+    if (n === 0) return new EditInfo('Resistance (ohms)', this.maxResistance, 0, 0);
+    if (n === 1) {
+      const ei = new EditInfo('Slider Text', 0, -1, -1);
+      ei.text = this.sliderText;
+      return ei;
+    }
+    if (n === 2)
+      return EditInfo.createCheckbox('Show Values', (this.flags & PotElm.FLAG_SHOW_VALUES) !== 0);
+    if (n === 3) return new EditInfo('Group Number (for linking)', this.link, -1, -1);
+    return null;
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    if (n === 0) this.maxResistance = ei.value;
+    // upstream also relabels the slider and resizes the iframe; the slider UI reads sliderText
+    if (n === 1) this.sliderText = ei.text ?? '';
+    if (n === 2) this.flags = ei.changeFlag(this.flags, PotElm.FLAG_SHOW_VALUES);
+    if (n === 3) {
+      this.setLink(javaDoubleToInt(ei.value));
+      // Scrollbar.setValue clamps to the slider range
+      this.sliderValue = Math.min(Math.max(this.calcSliderValue(), 0), 100);
+    }
+  }
+
+  override flipX(c2: number, count: number): void {
+    // this is only needed / only has an effect if point1 and point2 are on same grid line
+    this.flags ^= PotElm.FLAG_FLIP_OFFSET;
+    super.flipX(c2, count);
+  }
+
+  override flipY(c2: number, count: number): void {
+    this.flags ^= PotElm.FLAG_FLIP_OFFSET;
+    super.flipY(c2, count);
+  }
+
+  override flipXY(xmy: number, count: number): void {
+    if (Math.abs(this.dx) === Math.abs(this.dy)) this.flags ^= PotElm.FLAG_FLIP;
+    this.flags ^= PotElm.FLAG_FLIP_OFFSET;
+    super.flipXY(xmy, count);
   }
 }
 

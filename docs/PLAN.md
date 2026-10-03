@@ -246,10 +246,10 @@ Acceptance: all tier-1 golden circuits pass. Non-convergence ends in the same er
 Acceptance: upstream links using tier-1 elements load and animate correctly. Switching Classic and Dark at runtime restyles everything without reload. No-color-literal lint passes.
 
 ### Phase 5: Editor
-- [ ] Element palette with search, placement, drag, rotate, flip, wire drawing with grid snap, selection and multi-select, move, delete, copy/paste, undo/redo (command pattern).
-- [ ] Property panel generated from element schemas, editable while running.
-- [ ] Keyboard shortcuts, keeping upstream ones where sensible.
-- [ ] Save and export to file, `cct=` and `ctz=` links, compatible with upstream.
+- [x] Element palette with search, placement, drag, rotate, flip, wire drawing with grid snap, selection and multi-select, move, delete, copy/paste, undo/redo (command pattern).
+- [x] Property panel generated from element schemas, editable while running.
+- [x] Keyboard shortcuts, keeping upstream ones where sensible.
+- [x] Save and export to file, `cct=` and `ctz=` links, compatible with upstream.
 
 Acceptance: a circuit built in the new app opens correctly in upstream, and the reverse. Playwright e2e tests cover core editing flows.
 

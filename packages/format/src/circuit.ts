@@ -134,9 +134,21 @@ export class Circuit {
   /** Load a circuit in either format, replacing this one (upstream `readCircuit(text, 0)`). */
   read(text: string): void {
     this.clear();
-    if (text.startsWith('<')) this.readXml(text);
-    else this.readText(text);
+    if (text.startsWith('<')) this.readXml(text, false);
+    else this.readText(text, false);
     this.finishRead();
+  }
+
+  /**
+   * Add a circuit's elements to this one, keeping this circuit's settings (upstream
+   * `readCircuit(text, RC_RETAIN)`, used by paste). Returns the new elements, in file order.
+   */
+  readRetain(text: string): CircuitElm[] {
+    const first = this.elements.length;
+    if (text.startsWith('<')) this.readXml(text, true);
+    else this.readText(text, true);
+    this.finishRead();
+    return this.elements.slice(first);
   }
 
   private finishRead(): void {
@@ -150,7 +162,7 @@ export class Circuit {
 
   // ---- text format ---------------------------------------------------------------------------
 
-  private readText(text: string): void {
+  private readText(text: string, retain: boolean): void {
     for (const line of text.split(/\r\n|\r|\n/)) {
       const st = new StringTokenizer(line, ' +\t\n\r\f');
       if (!st.hasMoreTokens()) continue;
@@ -162,6 +174,7 @@ export class Circuit {
           continue;
         }
         if (type.charAt(0) === 'h') {
+          if (retain) continue;
           this.hint = {
             type: parseJavaInt(st.nextToken()),
             item1: parseJavaInt(st.nextToken()),
@@ -170,7 +183,13 @@ export class Circuit {
           continue;
         }
         if (type.charAt(0) === '$') {
-          this.readOptions(st);
+          if (retain) {
+            // a pasted circuit only turns the small grid on
+            if ((parseJavaInt(st.nextToken()) & OptionFlag.SMALL_GRID) !== 0) {
+              this.options.flags |= OptionFlag.SMALL_GRID;
+              this.setGrid();
+            }
+          } else this.readOptions(st);
           continue;
         }
         if (type.charAt(0) === '!') {
@@ -237,28 +256,31 @@ export class Circuit {
 
   // ---- XML format ----------------------------------------------------------------------------
 
-  private readXml(text: string): void {
+  private readXml(text: string, retain: boolean): void {
     const root = parseXml(text);
     const sim = this.sim;
     const r = new AttrReader(root);
-    this.readCircuitFlags(r.parseIntAttr('f', 0));
-    sim.maxTimeStep = sim.timeStep = r.parseDoubleAttr('ts', sim.maxTimeStep);
-    this.setSpeedFromIterCount(r.parseDoubleAttr('ic', this.getIterCount()));
-    this.options.currentBar = clamp(r.parseIntAttr('cb', this.options.currentBar), 1, 99);
-    this.options.voltageRange = r.parseDoubleAttr('vr', this.options.voltageRange);
-    this.options.powerBar = clamp(r.parseIntAttr('pb', this.options.powerBar), 1, 99);
-    sim.minTimeStep = r.parseDoubleAttr('mts', sim.minTimeStep);
-    sim.solverType = r.parseIntAttr('st', sim.solverType) as typeof sim.solverType;
-    this.setGrid();
+    if (!retain) {
+      this.readCircuitFlags(r.parseIntAttr('f', 0));
+      sim.maxTimeStep = sim.timeStep = r.parseDoubleAttr('ts', sim.maxTimeStep);
+      this.setSpeedFromIterCount(r.parseDoubleAttr('ic', this.getIterCount()));
+      this.options.currentBar = clamp(r.parseIntAttr('cb', this.options.currentBar), 1, 99);
+      this.options.voltageRange = r.parseDoubleAttr('vr', this.options.voltageRange);
+      this.options.powerBar = clamp(r.parseIntAttr('pb', this.options.powerBar), 1, 99);
+      sim.minTimeStep = r.parseDoubleAttr('mts', sim.minTimeStep);
+      sim.solverType = r.parseIntAttr('st', sim.solverType) as typeof sim.solverType;
+      this.setGrid();
+    }
 
     for (const elem of root.elements()) {
       const tag = elem.name;
       r.elem = elem;
       if (tag === 'o' || tag === 'adj') {
-        this.xmlExtras.push(elem);
+        if (!retain) this.xmlExtras.push(elem);
         continue;
       }
       if (tag === 'h') {
+        if (retain) continue;
         this.hint = {
           type: r.parseIntAttr('t', -1),
           item1: r.parseIntAttr('i1', 0),
@@ -324,22 +346,8 @@ export class Circuit {
     if (sim.solverType !== 0) w.dumpAttr('st', sim.solverType);
 
     modelsFor(sim).clearDumpedFlags();
-    const doc: XmlDocWriter = {
-      addElement(tag) {
-        const e = new XmlElement(tag);
-        root.appendChild(e);
-        return new AttrWriter(e);
-      },
-    };
-    for (const ce of this.elements) {
-      // upstream elements append their models from inside dumpXml, before the element itself
-      ce.dumpXmlModels(doc);
-      const elem = new XmlElement(ce.getXmlDumpType());
-      const ew = new AttrWriter(elem);
-      ce.dumpXml(ew);
-      ce.dumpXmlState(ew);
-      root.appendChild(elem);
-    }
+    const doc = docWriter(root);
+    for (const ce of this.elements) appendElement(root, doc, ce);
     for (const e of this.xmlExtras) if (e.name === 'o') root.appendChild(e);
     for (const e of this.xmlExtras) if (e.name === 'adj') root.appendChild(e);
     if (this.hint.type !== -1) {
@@ -352,6 +360,38 @@ export class Circuit {
     }
     return prettyPrint(root);
   }
+
+  /**
+   * The given elements as a bare `<cir>` document with the models they use, as upstream's
+   * clipboard holds them (`CommandManager.copyOfSelectedElms`, which writes them last to first).
+   */
+  dumpElementsXml(elements: readonly CircuitElm[]): string {
+    const root = new XmlElement('cir');
+    modelsFor(this.sim).clearDumpedFlags();
+    const doc = docWriter(root);
+    for (const ce of [...elements].reverse()) appendElement(root, doc, ce);
+    return prettyPrint(root);
+  }
+}
+
+function docWriter(root: XmlElement): XmlDocWriter {
+  return {
+    addElement(tag) {
+      const e = new XmlElement(tag);
+      root.appendChild(e);
+      return new AttrWriter(e);
+    },
+  };
+}
+
+function appendElement(root: XmlElement, doc: XmlDocWriter, ce: CircuitElm): void {
+  // upstream elements append their models from inside dumpXml, before the element itself
+  ce.dumpXmlModels(doc);
+  const elem = new XmlElement(ce.getXmlDumpType());
+  const ew = new AttrWriter(elem);
+  ce.dumpXml(ew);
+  ce.dumpXmlState(ew);
+  root.appendChild(elem);
 }
 
 /** Load a circuit from upstream text or XML. */

@@ -1,7 +1,24 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 circuitjs-next contributors
 
-export { CircuitElm, elementType, type ElementType } from './CircuitElm.ts';
+export {
+  CircuitElm,
+  distanceSq,
+  elementType,
+  lineDistanceSq,
+  type ElementType,
+} from './CircuitElm.ts';
+export {
+  E12,
+  EditInfo,
+  noCommaFormat,
+  parseUnits,
+  stepE12,
+  unitString,
+  type EditCheckbox,
+  type EditChoice,
+  type Editable,
+} from './edit/EditInfo.ts';
 export { SCALE_AUTO, SCALE_1, SCALE_M, SCALE_MU } from './constants.ts';
 export { escapeToken, unescapeToken } from './escape.ts';
 export {

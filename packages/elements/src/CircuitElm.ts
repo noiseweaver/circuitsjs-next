@@ -8,6 +8,7 @@
 // License, or (at your option) any later version. See LICENSE.
 
 import { CircuitNode, Point, SimElement, type Simulation } from '@circuitjs-next/engine';
+import type { EditInfo } from './edit/EditInfo.ts';
 import type { StringTokenizer } from './StringTokenizer.ts';
 import type { XmlAttrReader, XmlAttrWriter, XmlDocWriter } from './xml.ts';
 
@@ -90,6 +91,240 @@ export abstract class CircuitElm extends SimElement {
     this.y2 = y2;
     this.setPoints();
   }
+
+  // ---- editing (upstream CircuitElm placement, move and flip methods) ----------------------
+
+  /** Selected in the editor. Upstream keeps selection on the element too. */
+  selected = false;
+  /** Posts stay on one horizontal or vertical line (transistors, MOSFETs, op-amps). */
+  noDiagonal = false;
+  /** Handle grabbed by the last `getHandleGrabbedClose` (-1: none). */
+  lastHandleGrabbed = -1;
+
+  /** Upstream `CirSim.snapGrid`, with this element's simulation grid. */
+  snapGrid(x: number): number {
+    const gridSize = this.sim.gridSize;
+    return (x + (gridSize / 2 - 1)) & ~(gridSize - 1);
+  }
+
+  /** Drag the second point to (xx, yy) while the element is being placed. */
+  drag(xx: number, yy: number): void {
+    xx = this.snapGrid(xx);
+    yy = this.snapGrid(yy);
+    if (this.noDiagonal) {
+      if (Math.abs(this.x - xx) < Math.abs(this.y - yy)) xx = this.x;
+      else yy = this.y;
+    }
+    this.x2 = xx;
+    this.y2 = yy;
+    this.setPoints();
+  }
+
+  /** Length used when an element is dropped from the palette instead of dragged out. */
+  getDragLength(): number {
+    return 64;
+  }
+
+  getDragVertical(requestedVertical: boolean): boolean {
+    return requestedVertical;
+  }
+
+  /** Place for palette drag-and-drop with (xa, ya) as the anchor that follows the mouse. */
+  dragPlace(xa: number, ya: number, vertical: boolean): void {
+    vertical = this.getDragVertical(vertical);
+    const len = this.getDragLength();
+    this.x = xa;
+    this.y = ya;
+    this.x2 = xa + (vertical ? 0 : len);
+    this.y2 = ya + (vertical ? len : 0);
+    this.setPoints();
+  }
+
+  swapDragEndpoints(): void {
+    const tx = this.x;
+    const ty = this.y;
+    this.x = this.x2;
+    this.y = this.y2;
+    this.x2 = tx;
+    this.y2 = ty;
+    this.setPoints();
+  }
+
+  move(dx: number, dy: number): void {
+    this.x += dx;
+    this.y += dy;
+    this.x2 += dx;
+    this.y2 += dy;
+    this.setPoints();
+  }
+
+  /** A newly dragged-out element of zero size is not created. */
+  creationFailed(): boolean {
+    return this.x === this.x2 && this.y === this.y2;
+  }
+
+  /** Would moving by (dx, dy) put this element exactly on top of another one? */
+  allowMove(dx: number, dy: number, elements: readonly CircuitElm[]): boolean {
+    const nx = this.x + dx;
+    const ny = this.y + dy;
+    const nx2 = this.x2 + dx;
+    const ny2 = this.y2 + dy;
+    for (const ce of elements) {
+      if (ce.x === nx && ce.y === ny && ce.x2 === nx2 && ce.y2 === ny2) return false;
+      if (ce.x === nx2 && ce.y === ny2 && ce.x2 === nx && ce.y2 === ny) return false;
+    }
+    return true;
+  }
+
+  /** Move one end; refuses to make the element zero length. */
+  movePoint(n: number, dx: number, dy: number): void {
+    const oldx = this.x;
+    const oldy = this.y;
+    const oldx2 = this.x2;
+    const oldy2 = this.y2;
+    if (this.noDiagonal) {
+      if (this.x === this.x2) dx = 0;
+      else dy = 0;
+    }
+    if (n === 0) {
+      this.x += dx;
+      this.y += dy;
+    } else {
+      this.x2 += dx;
+      this.y2 += dy;
+    }
+    if (this.x === this.x2 && this.y === this.y2) {
+      this.x = oldx;
+      this.y = oldy;
+      this.x2 = oldx2;
+      this.y2 = oldy2;
+    }
+    this.setPoints();
+  }
+
+  /** Mirror left-right about x = center2 / 2. */
+  flipX(center2: number, _count: number): void {
+    this.x = center2 - this.x;
+    this.x2 = center2 - this.x2;
+    this.setPoints();
+  }
+
+  /** Mirror top-bottom about y = center2 / 2. */
+  flipY(center2: number, _count: number): void {
+    this.y = center2 - this.y;
+    this.y2 = center2 - this.y2;
+    this.setPoints();
+  }
+
+  /** Mirror about the diagonal x - y = xmy. */
+  flipXY(xmy: number, _count: number): void {
+    const nx = this.y + xmy;
+    const ny = this.x - xmy;
+    const nx2 = this.y2 + xmy;
+    const ny2 = this.x2 - xmy;
+    this.x = nx;
+    this.y = ny;
+    this.x2 = nx2;
+    this.y2 = ny2;
+    this.setPoints();
+  }
+
+  /** Swap the two ends (upstream "Swap Terminals"). */
+  flipPosts(): void {
+    const oldx = this.x;
+    const oldy = this.y;
+    this.x = this.x2;
+    this.y = this.y2;
+    this.x2 = oldx;
+    this.y2 = oldy;
+    this.setPoints();
+  }
+
+  canFlipX(): boolean {
+    return true;
+  }
+  canFlipY(): boolean {
+    return true;
+  }
+  canFlipXY(): boolean {
+    return this.canFlipX() || this.canFlipY();
+  }
+
+  getNumHandles(): number {
+    return this.getPostCount();
+  }
+
+  /** Which end handle is within sqrt(deltaSq) of the point, if the element is at least that long. */
+  getHandleGrabbedClose(xtest: number, ytest: number, deltaSq: number, minSize: number): number {
+    this.lastHandleGrabbed = -1;
+    if (distanceSq(this.x, this.y, this.x2, this.y2) >= minSize) {
+      if (distanceSq(this.x, this.y, xtest, ytest) <= deltaSq) this.lastHandleGrabbed = 0;
+      else if (this.getNumHandles() > 1 && distanceSq(this.x2, this.y2, xtest, ytest) <= deltaSq)
+        this.lastHandleGrabbed = 1;
+    }
+    return this.lastHandleGrabbed;
+  }
+
+  /** Squared distance from the mouse, to pick between overlapping boxes; -1 means not a hit. */
+  getMouseDistance(gx: number, gy: number): number {
+    if (this.getPostCount() === 0)
+      return distanceSq(
+        gx,
+        gy,
+        Math.trunc((this.x2 + this.x) / 2),
+        Math.trunc((this.y2 + this.y) / 2),
+      );
+    return lineDistanceSq(this.x, this.y, this.x2, this.y2, gx, gy);
+  }
+
+  /** Called when the user finishes dragging out a new element. */
+  draggingDone(): void {}
+
+  /** Keyboard shortcut that selects this element for placing (a char code), or 0. */
+  getShortcut(): number {
+    return 0;
+  }
+
+  // ---- edit dialog (upstream Editable) ------------------------------------------------------
+
+  /** Property n for the edit panel, or null past the last one. */
+  getEditInfo(_n: number): EditInfo | null {
+    return null;
+  }
+
+  setEditValue(_n: number, _ei: EditInfo): void {}
+
+  /** Upstream `getInfo(arr)[0]`: the element's kind in lower case ("resistor"), or null. */
+  getElmType(): string | null {
+    return null;
+  }
+
+  getDialogTitle(): string {
+    const name = this.getElmType();
+    if (name === null) return 'Edit Component';
+    return 'Edit ' + name.substring(0, 1).toUpperCase() + name.substring(1);
+  }
+}
+
+export function distanceSq(x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  return dx * dx + dy * dy;
+}
+
+/** Upstream `lineDistanceSq`: squared distance from (gx, gy) to the line through a and b. */
+export function lineDistanceSq(
+  xa: number,
+  ya: number,
+  xb: number,
+  yb: number,
+  gx: number,
+  gy: number,
+): number {
+  const dtop = (yb - ya) * gx - (xb - xa) * gy + xb * ya - yb * xa;
+  const dbot = (yb - ya) * (yb - ya) + (xb - xa) * (xb - xa);
+  if (dbot === 0) return distanceSq(xa, ya, gx, gy);
+  return Math.trunc((dtop * dtop) / dbot);
 }
 
 function placeholderNode(v: number): CircuitNode {

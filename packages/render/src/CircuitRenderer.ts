@@ -74,6 +74,10 @@ export class CircuitRenderer {
   hovered: CircuitElm | null = null;
   /** Element that stopped the simulation; drawn highlighted and on top. */
   stopElm: CircuitElm | null = null;
+  /** Element being placed (not in the circuit yet); drawn on top with all its posts. */
+  pending: CircuitElm | null = null;
+  /** Rubber band selection in circuit coordinates. */
+  selectionRect: Rect | null = null;
 
   constructor(canvas: HTMLCanvasElement, theme: Theme) {
     const ctx = canvas.getContext('2d');
@@ -99,6 +103,13 @@ export class CircuitRenderer {
     this.dots.clear();
     this.hovered = null;
     this.stopElm = null;
+    this.posts = this.findPosts();
+  }
+
+  /** The circuit was edited (elements added, removed or moved); dot positions are kept. */
+  elementsChanged(elements: CircuitElm[]): void {
+    this.elements = elements;
+    if (this.hovered !== null && !elements.includes(this.hovered)) this.hovered = null;
     this.posts = this.findPosts();
   }
 
@@ -195,15 +206,35 @@ export class CircuitRenderer {
     painter.highlighted = false;
     for (const p of this.posts.draw) this.drawPost(p.x, p.y, 'post');
     for (const p of this.posts.bad) this.drawPost(p.x, p.y, 'badConnection');
+
+    if (this.pending !== null) this.drawElement(this.pending, frame);
+    if (this.selectionRect !== null) this.drawSelectionRect(this.selectionRect);
+  }
+
+  private drawSelectionRect(r: Rect): void {
+    const c = this.ctx;
+    c.save();
+    c.strokeStyle = this.palette.selection;
+    c.fillStyle = this.palette.selection;
+    c.lineWidth = 1 / this.viewport.scale;
+    c.setLineDash([4 / this.viewport.scale, 3 / this.viewport.scale]);
+    c.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+    c.globalAlpha = 0.08;
+    c.fillRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+    c.restore();
   }
 
   private drawElement(e: CircuitElm, frame: FrameState): void {
     const view = viewFor(e);
     if (!view) return;
     const painter = this.painter;
-    const highlighted = e === this.hovered || e === this.stopElm;
+    const highlighted =
+      e === this.hovered || e === this.stopElm || e.selected || e === this.pending;
     painter.highlighted = highlighted;
-    painter.highlightColor = e === this.stopElm ? this.palette.selection : this.palette.hover;
+    painter.highlightColor =
+      e === this.stopElm || e.selected || e === this.pending
+        ? this.palette.selection
+        : this.palette.hover;
     const dots = this.dots;
     const ctx: DrawContext = {
       painter,

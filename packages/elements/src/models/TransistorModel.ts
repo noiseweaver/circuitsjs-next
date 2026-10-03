@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Ported from CircuitJS1 src/com/lushprojects/circuitjs1/client/TransistorModel.java (master) at
-// 5a707168778216bb6ed01bfdd62e8bbf7ae0a032. The edit dialog parts are left for Phase 5.
+// 5a707168778216bb6ed01bfdd62e8bbf7ae0a032. The model edit dialog is left for a later phase.
 // Copyright (C) Paul Falstad and Iain Sharp; port Copyright (C) circuitjs-next contributors.
 // This program is free software: you can redistribute it and/or modify it under the terms of the
 // GNU General Public License as published by the Free Software Foundation, either version 2 of the
@@ -10,6 +10,11 @@ import { unescapeToken } from '../escape.ts';
 import { parseJavaDouble, parseJavaInt } from '../java.ts';
 import { StringTokenizer } from '../StringTokenizer.ts';
 import type { XmlAttrReader, XmlDocWriter } from '../xml.ts';
+
+/** Java `String.compareTo` order on model names (UTF-16 code units), for the model lists. */
+function compareNames(a: { name: string }, b: { name: string }): number {
+  return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+}
 
 /** SPICE Gummel-Poon parameters (bjtload.c names in comments). */
 export class TransistorModel {
@@ -84,6 +89,12 @@ export class TransistorModel {
     m.transitTimeR = copy.transitTimeR;
     m.updateModel();
     return m;
+  }
+
+  /** Name and description, as the model choice lists them. */
+  getDescription(): string {
+    if (this.description === null || this.description === this.name) return this.name;
+    return this.name + ' (' + this.description + ')';
   }
 
   undump(st: StringTokenizer): void {
@@ -249,6 +260,16 @@ export class TransistorModels {
     lm.name = name;
     this.modelMap.set(name, lm);
     return lm;
+  }
+
+  /** Models the user can pick (upstream `getModelList`), sorted by name. */
+  getModelList(): TransistorModel[] {
+    const vector: TransistorModel[] = [];
+    for (const tm of this.modelMap.values()) {
+      if (tm.internal) continue;
+      if (!vector.includes(tm)) vector.push(tm);
+    }
+    return vector.sort(compareNames);
   }
 
   getDefaultModel(): TransistorModel {

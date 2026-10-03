@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 circuitjs-next contributors
 
+import type { CircuitElm } from '@circuitjs-next/elements';
 import { BUILTIN_THEMES, DEFAULT_THEME_ID } from '@circuitjs-next/theme';
 import { create } from 'zustand';
 import type { ExampleList } from './examples.ts';
@@ -28,6 +29,20 @@ export interface SimStatus {
   badConnections: number;
 }
 
+/** Editor state the UI shows (the editor itself lives in the controller). */
+export interface EditorState {
+  /** Class placed by dragging on the canvas, or null in select mode. */
+  addClass: string | null;
+  selectionCount: number;
+  /** The one selected element (property panel), else null. */
+  selected: CircuitElm | null;
+  canUndo: boolean;
+  canRedo: boolean;
+  canPaste: boolean;
+  /** Bumped when the selected element's properties may have changed. */
+  revision: number;
+}
+
 export interface AppState {
   title: string;
   running: boolean;
@@ -42,6 +57,15 @@ export interface AppState {
   /** Load or fetch error to show. */
   error: string | null;
   examples: ExampleList | null;
+  editor: EditorState;
+  /** The palette panel is open (it closes itself on narrow screens). */
+  paletteOpen: boolean;
+  /** Text of a short notice ("Link copied"), or null. */
+  toast: string | null;
+  /** Open dialog (commands.ts DialogKind). */
+  dialog: 'save' | 'exportLink' | 'exportText' | 'importText' | 'shortcuts' | null;
+  /** Bumped to move keyboard focus to the property panel (double-click, Enter). */
+  inspectorFocus: number;
 }
 
 const SETTINGS_KEY = 'circuitjs-next.settings.v2';
@@ -103,6 +127,19 @@ export const useApp = create<AppState>(() => ({
   warnings: [],
   error: null,
   examples: null,
+  editor: {
+    addClass: null,
+    selectionCount: 0,
+    selected: null,
+    canUndo: false,
+    canRedo: false,
+    canPaste: false,
+    revision: 0,
+  },
+  paletteOpen: typeof window === 'undefined' || window.innerWidth >= 720,
+  toast: null,
+  inspectorFocus: 0,
+  dialog: null,
 }));
 
 export function updateSettings(patch: Partial<UserSettings>): void {

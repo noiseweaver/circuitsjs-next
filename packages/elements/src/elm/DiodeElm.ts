@@ -8,6 +8,7 @@
 // License, or (at your option) any later version. See LICENSE.
 
 import { CircuitElm, elementType } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 import { unescapeToken } from '../escape.ts';
 import { parseJavaDouble } from '../java.ts';
 import type { DiodeModel } from '../models/DiodeModel.ts';
@@ -27,6 +28,8 @@ export class DiodeElm extends CircuitElm {
   model: DiodeModel | null = null;
   hasResistance = false;
   diodeEndNode = 1;
+  /** The model list last shown by getEditInfo, which setEditValue indexes into. */
+  models: DiodeModel[] | null = null;
 
   override getClassName(): string {
     return 'DiodeElm';
@@ -129,6 +132,47 @@ export class DiodeElm extends CircuitElm {
   override stepFinished(): void {
     // stop for huge currents that make simulator act weird
     if (Math.abs(this.current) > 1e12) this.sim.stop('max current exceeded', this);
+  }
+
+  override getElmType(): string {
+    return 'diode';
+  }
+
+  /** Zener diodes list only models with a breakdown voltage. */
+  protected isZener(): boolean {
+    return false;
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    if (n === 0) {
+      const models = modelsFor(this.sim).diode.getModelList(this.isZener());
+      this.models = models;
+      let selected = 0;
+      for (let i = 0; i !== models.length; i++) if (models[i] === this.model) selected = i;
+      return EditInfo.createChoice(
+        'Model',
+        models.map((dm) => dm.getDescription()),
+        selected,
+      );
+    }
+    // model editing: later phase (upstream buttons 1-3: "Create New Simple Model", "Create New
+    // Advanced Model", and "Edit Model" unless the model is read-only)
+    return null;
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    if (n === 0) {
+      const models = this.models ?? modelsFor(this.sim).diode.getModelList(this.isZener());
+      this.model = models[ei.choice?.selected ?? 0];
+      this.modelName = this.model.name;
+      this.setup();
+      ei.newDialog = true;
+      return;
+    }
+  }
+
+  override getShortcut(): number {
+    return 'd'.charCodeAt(0);
   }
 }
 

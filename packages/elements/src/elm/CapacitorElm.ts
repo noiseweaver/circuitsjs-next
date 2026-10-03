@@ -9,6 +9,7 @@
 
 import { FindPathInfo, PathType } from '@circuitjs-next/engine';
 import { CircuitElm, elementType } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 import { parseJavaDouble } from '../java.ts';
 import type { StringTokenizer } from '../StringTokenizer.ts';
 import type { XmlAttrReader, XmlAttrWriter } from '../xml.ts';
@@ -169,6 +170,36 @@ export class CapacitorElm extends CircuitElm {
       }
     }
     return true;
+  }
+
+  override getElmType(): string {
+    return 'capacitor';
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    if (n === 0) return new EditInfo('Capacitance (F)', this.capacitance, 1e-6, 1e-3);
+    if (n === 1) return EditInfo.createCheckbox('Trapezoidal Approximation', this.isTrapezoidal());
+    if (n === 2) return new EditInfo('Initial Voltage (on Reset)', this.initialVoltage);
+    if (n === 3) return new EditInfo('Series Resistance', this.seriesResistance);
+    // if you add more things here, check PolarCapacitorElm
+    return null;
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    if (n === 0) this.capacitance = ei.value > 0 ? ei.value : 1e-12;
+    if (n === 1) {
+      if (ei.checkbox?.state === true) this.flags &= ~CapacitorElm.FLAG_BACK_EULER;
+      else this.flags |= CapacitorElm.FLAG_BACK_EULER;
+    }
+    if (n === 2) this.initialVoltage = ei.value;
+    if (n === 3) {
+      this.seriesResistance = ei.value;
+      this.allocNodes();
+    }
+  }
+
+  override getShortcut(): number {
+    return 'c'.charCodeAt(0);
   }
 }
 

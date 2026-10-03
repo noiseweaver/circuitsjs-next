@@ -9,20 +9,25 @@ import { useApp } from './store.ts';
 export const BASE = import.meta.env.BASE_URL;
 
 /** Open an upstream example circuit by file name. */
-export async function openExample(file: string, title: string, running = true): Promise<void> {
+export async function openExample(
+  file: string,
+  title: string,
+  running = true,
+  undoable = false,
+): Promise<void> {
   try {
-    controller.load(await fetchExample(file, BASE), title, running);
+    controller.load(await fetchExample(file, BASE), title, running, undoable);
   } catch (e) {
     useApp.setState({ error: e instanceof Error ? e.message : String(e) });
   }
 }
 
 /** Open a circuit file from another site (upstream `startCircuitLink`). */
-export async function openLink(url: string, running = true): Promise<void> {
+export async function openLink(url: string, running = true, undoable = false): Promise<void> {
   try {
     const r = await fetch(url);
     if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-    controller.load(await r.text(), url.substring(url.lastIndexOf('/') + 1), running);
+    controller.load(await r.text(), url.substring(url.lastIndexOf('/') + 1), running, undoable);
   } catch (e) {
     useApp.setState({ error: `Can't load ${url}: ${e instanceof Error ? e.message : String(e)}` });
   }
@@ -32,21 +37,25 @@ export async function openLink(url: string, running = true): Promise<void> {
  * Open what an upstream-style link asks for. Accepts a full URL or just its query string, so
  * `https://www.falstad.com/circuit/circuitjs.html?ctz=...` works when pasted.
  */
-export async function openQuery(search: string, examples: ExampleList | null): Promise<boolean> {
+export async function openQuery(
+  search: string,
+  examples: ExampleList | null,
+  undoable = false,
+): Promise<boolean> {
   const q = parseQuery(search);
   const running = queryBoolean(q, 'running', true);
   const start = startCircuitFromQuery(q);
   switch (start.kind) {
     case 'text':
-      controller.load(start.text, 'Linked circuit', running);
+      controller.load(start.text, 'Linked circuit', running, undoable);
       return true;
     case 'link':
-      await openLink(start.url, running);
+      await openLink(start.url, running, undoable);
       return true;
     case 'example': {
       const title =
         start.label ?? (examples ? findExample(examples.root, start.file)?.title : null);
-      await openExample(start.file, title ?? start.file, running);
+      await openExample(start.file, title ?? start.file, running, undoable);
       return true;
     }
     default:

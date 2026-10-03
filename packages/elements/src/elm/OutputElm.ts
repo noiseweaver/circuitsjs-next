@@ -8,6 +8,7 @@
 // License, or (at your option) any later version. See LICENSE.
 
 import { CircuitElm, elementType } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 import { SCALE_AUTO } from '../constants.ts';
 import { parseJavaInt } from '../java.ts';
 import type { StringTokenizer } from '../StringTokenizer.ts';
@@ -56,6 +57,38 @@ export class OutputElm extends CircuitElm {
 
   override getVoltageDiff(): number {
     return this.nodes[0].v;
+  }
+
+  override getElmType(): string {
+    return 'output';
+  }
+
+  isFixed(): boolean {
+    return (this.flags & OutputElm.FLAG_FIXED) !== 0;
+  }
+  showVoltage(): boolean {
+    return (this.flags & OutputElm.FLAG_VALUE) !== 0;
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    if (n === 0) return EditInfo.createCheckbox('Show Voltage', this.showVoltage());
+    if (!this.showVoltage()) return null;
+    if (n === 1) return EditInfo.createChoice('Scale', ['Auto', 'V', 'mV', 'μV'], this.scale);
+    if (this.scale === SCALE_AUTO) return null;
+    if (n === 2) return EditInfo.createCheckbox('Fixed Precision', this.isFixed());
+    return null;
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    if (n === 0) {
+      this.flags = ei.changeFlag(this.flags, OutputElm.FLAG_VALUE);
+      ei.newDialog = true;
+    }
+    if (n === 1) {
+      this.scale = ei.choice?.selected ?? 0;
+      ei.newDialog = true;
+    }
+    if (n === 2) this.flags = ei.changeFlag(this.flags, OutputElm.FLAG_FIXED);
   }
 }
 

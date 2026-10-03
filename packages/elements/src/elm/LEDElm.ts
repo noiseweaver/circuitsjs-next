@@ -7,6 +7,7 @@
 // License, or (at your option) any later version. See LICENSE.
 
 import { elementType } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 import { parseJavaDouble } from '../java.ts';
 import { modelsFor } from '../models/ModelLibrary.ts';
 import type { StringTokenizer } from '../StringTokenizer.ts';
@@ -71,6 +72,31 @@ export class LEDElm extends DiodeElm {
     this.colorG = r.parseDoubleAttr('cg', this.colorG);
     this.colorB = r.parseDoubleAttr('cb', this.colorB);
     this.maxBrightnessCurrent = r.parseDoubleAttr('mbc', this.maxBrightnessCurrent);
+  }
+
+  override getElmType(): string {
+    return 'LED';
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    if (n === 0) return new EditInfo('Red Value (0-1)', this.colorR, 0, 1).setDimensionless();
+    if (n === 1) return new EditInfo('Green Value (0-1)', this.colorG, 0, 1).setDimensionless();
+    if (n === 2) return new EditInfo('Blue Value (0-1)', this.colorB, 0, 1).setDimensionless();
+    if (n === 3)
+      return new EditInfo('Max Brightness Current (A)', this.maxBrightnessCurrent, 0, 0.1);
+    return super.getEditInfo(n - 4);
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    if (n === 0) this.colorR = ei.value;
+    if (n === 1) this.colorG = ei.value;
+    if (n === 2) this.colorB = ei.value;
+    if (n === 3) this.maxBrightnessCurrent = ei.value;
+    super.setEditValue(n - 4, ei);
+  }
+
+  override getShortcut(): number {
+    return 'l'.charCodeAt(0);
   }
 }
 

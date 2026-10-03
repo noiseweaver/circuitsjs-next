@@ -17,7 +17,7 @@ export function OpenLinkDialog(props: { open: boolean; onOpenChange: (open: bool
       setProblem('That link has no circuit in it (no "?cct=", "?ctz=" or "?startCircuit=").');
       return;
     }
-    const ok = await openQuery(link.substring(i), useApp.getState().examples);
+    const ok = await openQuery(link.substring(i), useApp.getState().examples, true);
     if (!ok) {
       setProblem('That link has no circuit in it (no "?cct=", "?ctz=" or "?startCircuit=").');
       return;

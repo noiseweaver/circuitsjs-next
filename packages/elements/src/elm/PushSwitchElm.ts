@@ -17,6 +17,9 @@ export class PushSwitchElm extends SwitchElm {
   override getClassName(): string {
     return 'PushSwitchElm';
   }
+  override getShortcut(): number {
+    return 0;
+  }
 
   /** Upstream `SwitchElm(int xx, int yy, boolean mm)` with mm true. */
   override initNew(): void {

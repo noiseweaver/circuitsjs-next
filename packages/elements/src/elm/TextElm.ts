@@ -8,8 +8,9 @@
 // License, or (at your option) any later version. See LICENSE.
 
 import { CircuitElm, elementType } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 import { unescapeToken } from '../escape.ts';
-import { parseJavaInt } from '../java.ts';
+import { javaDoubleToInt, parseJavaInt } from '../java.ts';
 import type { StringTokenizer } from '../StringTokenizer.ts';
 import type { XmlAttrReader, XmlAttrWriter } from '../xml.ts';
 
@@ -87,6 +88,55 @@ export class TextElm extends CircuitElm {
 
   override getPostCount(): number {
     return 0;
+  }
+
+  /** Text is placed, not dragged out: a click puts it at (xx, yy) with a token length. */
+  override drag(xx: number, yy: number): void {
+    this.x = xx;
+    this.y = yy;
+    this.x2 = xx + 16;
+    this.y2 = yy;
+  }
+
+  override getElmType(): string {
+    return 'text';
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    if (n === 0) {
+      // upstream: a five-line TextArea showing the text with \n escapes as line breaks
+      const ei = EditInfo.text('Text', this.text.replaceAll('\\n', '\n'));
+      ei.multiline = true;
+      return ei;
+    }
+    if (n === 1) return new EditInfo('Size', this.size, 5, 100);
+    if (n === 2)
+      return EditInfo.createCheckbox('Draw Bar On Top', (this.flags & TextElm.FLAG_BAR) !== 0);
+    // Upstream shows lightGrayColor (the theme's text color) when no color is set, and stores
+    // null when that value comes back. Theme colors live in the renderer here, so the field is
+    // empty for the default and empty text means the default.
+    if (n === 3) return EditInfo.text('Color', this.color ?? '').setIsColor();
+    return null;
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    if (n === 0) {
+      this.text = (ei.text ?? '').replaceAll('\n', '\\n');
+      this.split();
+    }
+    if (n === 1) this.size = javaDoubleToInt(ei.value);
+    if (n === 2) {
+      if (ei.checkbox?.state === true) this.flags |= TextElm.FLAG_BAR;
+      else this.flags &= ~TextElm.FLAG_BAR;
+    }
+    if (n === 3) {
+      const c = ei.text ?? '';
+      this.color = c === '' ? null : c;
+    }
+  }
+
+  override getShortcut(): number {
+    return 't'.charCodeAt(0);
   }
 }
 

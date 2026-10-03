@@ -10,6 +10,7 @@
 
 import type { Point } from '@circuitjs-next/engine';
 import { CircuitElm, elementType, type ElementType } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 import { parseJavaDouble } from '../java.ts';
 import { modelsFor } from '../models/ModelLibrary.ts';
 import type { MosfetModel } from '../models/MosfetModel.ts';
@@ -70,6 +71,11 @@ export class MosfetElm extends CircuitElm {
   src: Point[] = [];
   drn: Point[] = [];
   body: Point[] = [];
+  /** The model list last shown by getEditInfo, which setEditValue indexes into. */
+  models: MosfetModel[] | null = null;
+
+  // upstream sets this in both constructors
+  override noDiagonal = true;
 
   override getClassName(): string {
     return 'MosfetElm';
@@ -96,7 +102,10 @@ export class MosfetElm extends CircuitElm {
   }
 
   getLastModelName(): string {
-    return MosfetElm.defaultModelName;
+    return modelsFor(this.sim).mosfetLastModelName;
+  }
+  setLastModelName(n: string): void {
+    modelsFor(this.sim).mosfetLastModelName = n;
   }
 
   override undump(st: StringTokenizer): void {
@@ -498,17 +507,94 @@ export class MosfetElm extends CircuitElm {
       model.capGD > 0 && this.geqGD > 0 ? this.geqGD * (nodes[0].v - nodes[2].v) + this.ceqGD : 0;
     return -this.ids + this.diodeCurrent2 + capCur;
   }
+
+  override getElmType(): string {
+    return 'MOSFET';
+  }
+
+  /**
+   * Does this element support D/S swapping? JfetElm overrides this to false since its
+   * setPoints() doesn't honor FLAG_FLIP. (The other MOSFET options live on MosfetModel.)
+   */
+  hasSwapDS(): boolean {
+    return true;
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    if (n === 0) {
+      const models = modelsFor(this.sim).mosfet.getModelList(this.isJfet());
+      this.models = models;
+      let selected = 0;
+      for (let i = 0; i !== models.length; i++) if (models[i] === this.model) selected = i;
+      return EditInfo.createChoice(
+        'Model',
+        models.map((mm) => mm.getDescription()),
+        selected,
+      );
+    }
+    const idx = 1;
+    if (this.hasSwapDS() && n === idx)
+      return EditInfo.createCheckbox('Swap D/S', (this.flags & MosfetElm.FLAG_FLIP) !== 0);
+    // model editing: later phase (upstream buttons after Swap D/S: "Create New Model" and
+    // "Edit Model")
+    return null;
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    if (n === 0) {
+      const models = this.models ?? modelsFor(this.sim).mosfet.getModelList(this.isJfet());
+      this.model = models[ei.choice?.selected ?? 0];
+      this.modelName = this.model.name;
+      this.setLastModelName(this.modelName);
+      this.setup();
+      ei.newDialog = true;
+    } else {
+      const idx = 1;
+      if (this.hasSwapDS() && n === idx) {
+        this.flags =
+          ei.checkbox?.state === true
+            ? this.flags | MosfetElm.FLAG_FLIP
+            : this.flags & ~MosfetElm.FLAG_FLIP;
+      }
+      // model editing: later phase (the button fields return here without the code below)
+    }
+    // lots of different cases where the body terminal might have gotten removed/added so just
+    // do this all the time
+    this.allocNodes();
+    this.setPoints();
+  }
+
+  override flipX(c2: number, count: number): void {
+    if (this.x === this.x2) this.flags ^= MosfetElm.FLAG_FLIP;
+    super.flipX(c2, count);
+  }
+
+  override flipY(c2: number, count: number): void {
+    if (this.y === this.y2) this.flags ^= MosfetElm.FLAG_FLIP;
+    super.flipY(c2, count);
+  }
+
+  override flipXY(xmy: number, count: number): void {
+    this.flags ^= MosfetElm.FLAG_FLIP;
+    super.flipXY(xmy, count);
+  }
 }
 
 export class NMosfetElm extends MosfetElm {
   override getClassName(): string {
     return 'NMosfetElm';
   }
+  override getShortcut(): number {
+    return 'N'.charCodeAt(0);
+  }
 }
 
 export class PMosfetElm extends MosfetElm {
   override getClassName(): string {
     return 'PMosfetElm';
+  }
+  override getShortcut(): number {
+    return 'P'.charCodeAt(0);
   }
   override initNew(): void {
     this.initMosfet(true);

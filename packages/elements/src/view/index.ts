@@ -83,6 +83,7 @@ export function viewFor(e: CircuitElm): ElementView | null {
 
 export type { ElementView } from './common.ts';
 export { addCurCount, CURRENT_TOO_FAST } from './passive.ts';
+export { switchRect } from './switches.ts';
 export { boxAround, rectContains, rectOf, unionRect, type Rect } from './geometry.ts';
 export type {
   ColorRole,

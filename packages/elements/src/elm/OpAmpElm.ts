@@ -10,6 +10,7 @@
 
 import { FindPathInfo, PathType, type Point } from '@circuitjs-next/engine';
 import { CircuitElm, elementType } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 import { parseJavaDouble } from '../java.ts';
 import type { StringTokenizer } from '../StringTokenizer.ts';
 import type { XmlAttrReader, XmlAttrWriter } from '../xml.ts';
@@ -33,6 +34,9 @@ export class OpAmpElm extends CircuitElm {
 
   in1p: Point[] = [];
   in2p: Point[] = [];
+
+  // upstream sets this in both constructors
+  override noDiagonal = true;
 
   override getClassName(): string {
     return 'OpAmpElm';
@@ -200,6 +204,42 @@ export class OpAmpElm extends CircuitElm {
   override getCurrentIntoNode(n: number): number {
     if (n === 2) return -this.current;
     return 0;
+  }
+
+  override getElmType(): string {
+    return 'op-amp';
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    if (n === 0) return new EditInfo('Max Output (V)', this.maxOut, 1, 20);
+    if (n === 1) return new EditInfo('Min Output (V)', this.minOut, -20, 0);
+    if (n === 2) return new EditInfo('Gain', this.gain, 10, 1000000).setPositive();
+    return null;
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    if (n === 0) this.maxOut = ei.value;
+    if (n === 1) this.minOut = ei.value;
+    if (n === 2) this.gain = ei.value;
+  }
+
+  override getShortcut(): number {
+    return 'a'.charCodeAt(0);
+  }
+
+  override flipX(c2: number, count: number): void {
+    if (this.dx === 0) this.flags ^= OpAmpElm.FLAG_SWAP;
+    super.flipX(c2, count);
+  }
+
+  override flipY(c2: number, count: number): void {
+    if (this.dy === 0) this.flags ^= OpAmpElm.FLAG_SWAP;
+    super.flipY(c2, count);
+  }
+
+  override flipXY(xmy: number, count: number): void {
+    this.flags ^= OpAmpElm.FLAG_SWAP;
+    super.flipXY(xmy, count);
   }
 }
 

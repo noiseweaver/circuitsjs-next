@@ -9,6 +9,7 @@
 
 import { FindPathInfo, PathType, type CircuitNode, type SimElement } from '@circuitjs-next/engine';
 import { CircuitElm, elementType } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 import { parseJavaDouble } from '../java.ts';
 import type { StringTokenizer } from '../StringTokenizer.ts';
 import type { XmlAttrReader, XmlAttrWriter } from '../xml.ts';
@@ -198,6 +199,37 @@ export class InductorElm extends CircuitElm {
     const fpi = new FindPathInfo(PathType.INDUCT, this, this.getNode(1), this.sim);
     if (!fpi.findPath(this.getNode(0))) this.reset();
     return true;
+  }
+
+  override getElmType(): string {
+    return this.saturationCurrent > 0 ? 'inductor (sat)' : 'inductor';
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    if (n === 0) return new EditInfo('Inductance (H)', this.inductance, 1e-2, 10).setPositive();
+    if (n === 1)
+      return EditInfo.createCheckbox('Trapezoidal Approximation', this.ind.isTrapezoidal());
+    if (n === 2) return new EditInfo('Initial Current (on Reset) (A)', this.initialCurrent);
+    if (n === 3) return new EditInfo('Saturation Current (A) (0=none)', this.saturationCurrent);
+    return null;
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    if (n === 0) this.inductance = ei.value;
+    if (n === 1) {
+      if (ei.checkbox?.state === true) this.flags &= ~Inductor.FLAG_BACK_EULER;
+      else this.flags |= Inductor.FLAG_BACK_EULER;
+    }
+    if (n === 2) this.initialCurrent = ei.value;
+    if (n === 3) {
+      if (ei.value >= 0) this.saturationCurrent = ei.value;
+      else ei.setError('must be >= 0');
+    }
+    this.ind.setup(this.inductance, this.current, this.flags, this.saturationCurrent);
+  }
+
+  override getShortcut(): number {
+    return 'L'.charCodeAt(0);
   }
 }
 

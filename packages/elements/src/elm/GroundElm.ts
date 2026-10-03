@@ -9,6 +9,7 @@
 
 import type { Point } from '@circuitjs-next/engine';
 import { CircuitElm, elementType } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 import { parseJavaInt } from '../java.ts';
 import type { StringTokenizer } from '../StringTokenizer.ts';
 import type { XmlAttrReader, XmlAttrWriter } from '../xml.ts';
@@ -16,6 +17,9 @@ import type { XmlAttrReader, XmlAttrWriter } from '../xml.ts';
 export class GroundElm extends CircuitElm {
   /** Needed for old subcircuits which have GroundElm dumped. */
   static readonly FLAG_OLD_STYLE = 1;
+
+  /** Symbol of the last ground edited; new grounds start with it (upstream static). */
+  static lastSymbolType = 0;
 
   /** 0 earth, 1 chassis, 2 signal, 3 common. */
   symbolType = 0;
@@ -25,6 +29,14 @@ export class GroundElm extends CircuitElm {
   }
   override getDumpType(): number {
     return 'g'.charCodeAt(0);
+  }
+
+  override initNew(): void {
+    this.symbolType = GroundElm.lastSymbolType;
+  }
+
+  override getDragVertical(_requestedVertical: boolean): boolean {
+    return true;
   }
 
   override undump(st: StringTokenizer): void {
@@ -90,6 +102,33 @@ export class GroundElm extends CircuitElm {
   }
   override getCurrentIntoNode(_n: number): number {
     return -this.current;
+  }
+
+  override getElmType(): string {
+    return 'ground';
+  }
+
+  override getShortcut(): number {
+    return 'g'.charCodeAt(0);
+  }
+  override getDragLength(): number {
+    return 32;
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    if (n === 0) {
+      const ei = EditInfo.createChoice(
+        'Symbol',
+        ['Earth', 'Chassis', 'Signal', 'Common'],
+        this.symbolType,
+      );
+      return ei;
+    }
+    return null;
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    if (n === 0) GroundElm.lastSymbolType = this.symbolType = ei.choice?.selected ?? 0;
   }
 }
 

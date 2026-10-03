@@ -7,7 +7,7 @@
 // License, or (at your option) any later version. See LICENSE.
 
 import { Simulation } from '@circuitjs-next/engine';
-import type { CircuitElm, ElementType } from './CircuitElm.ts';
+import { elementType, type CircuitElm, type ElementType } from './CircuitElm.ts';
 import { CapacitorElmType } from './elm/CapacitorElm.ts';
 import { DiodeElmType } from './elm/DiodeElm.ts';
 import { LEDElmType } from './elm/LEDElm.ts';
@@ -27,7 +27,7 @@ import { PotElmType } from './elm/PotElm.ts';
 import { ProbeElmType } from './elm/ProbeElm.ts';
 import { ResistorElmType } from './elm/ResistorElm.ts';
 import { SwitchElmType } from './elm/SwitchElm.ts';
-import { VoltageElmType } from './elm/VoltageElm.ts';
+import { ACVoltageElm, DCVoltageElm, VoltageElmType } from './elm/VoltageElm.ts';
 import { WireElmType } from './elm/WireElm.ts';
 import type { StringTokenizer } from './StringTokenizer.ts';
 
@@ -59,6 +59,8 @@ export const ELEMENT_TYPES: readonly ElementType[] = [
   PTransistorElmType,
   NMosfetElmType,
   PMosfetElmType,
+  elementType('DCVoltageElm', DCVoltageElm),
+  elementType('ACVoltageElm', ACVoltageElm),
 ];
 
 const byClassName = new Map<string, ElementType>();

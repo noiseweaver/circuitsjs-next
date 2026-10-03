@@ -9,6 +9,7 @@
 
 import { FindPathInfo, PathType } from '@circuitjs-next/engine';
 import { CircuitElm, elementType } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 import { parseJavaDouble } from '../java.ts';
 import type { StringTokenizer } from '../StringTokenizer.ts';
 import type { XmlAttrReader, XmlAttrWriter } from '../xml.ts';
@@ -150,6 +151,22 @@ export class CurrentElm extends CircuitElm {
     const fpi = new FindPathInfo(PathType.INDUCT, this, this.getNode(1), this.sim);
     this.setBroken(!fpi.findPath(this.getNode(0)));
     return true;
+  }
+
+  override getElmType(): string {
+    return 'current source';
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    if (n === 0) return new EditInfo('Current (A)', this.currentValue, 0, 0.1);
+    if (n === 1)
+      return new EditInfo('Max Voltage (V, 0=unlimited)', this.maxVoltage, 0, 0).setUnitStep();
+    return null;
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    if (n === 0) this.currentValue = ei.value;
+    if (n === 1 && ei.value >= 0) this.maxVoltage = ei.value;
   }
 }
 

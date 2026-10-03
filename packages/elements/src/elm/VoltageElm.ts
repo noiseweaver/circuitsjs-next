@@ -9,6 +9,7 @@
 
 import { FindPathInfo, PathType, type VoltageSource } from '@circuitjs-next/engine';
 import { CircuitElm, type ElementType } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 import { parseJavaDouble, parseJavaInt } from '../java.ts';
 import type { StringTokenizer } from '../StringTokenizer.ts';
 import type { XmlAttrReader, XmlAttrWriter } from '../xml.ts';
@@ -34,6 +35,12 @@ export class VoltageElm extends CircuitElm {
   static readonly WF_VAR = 7;
 
   static readonly defaultPulseDuty = 1 / (2 * Math.PI);
+
+  /**
+   * Asked when a new frequency is too high for the timestep (upstream `Window.confirm`): true
+   * shrinks the maximum timestep, false caps the frequency. Null (no UI) caps it.
+   */
+  static confirmAdjustTimestep: ((message: string) => boolean) | null = null;
 
   waveform = 0;
   frequency = 0;
@@ -245,6 +252,259 @@ export class VoltageElm extends CircuitElm {
     return this.nodes[1].v - this.nodes[0].v;
   }
 
+  override getDragVertical(_requestedVertical: boolean): boolean {
+    return true;
+  }
+
+  /** Point 2, not point 1, tracks the mouse during toolbar drag-and-drop. */
+  override dragPlace(xa: number, ya: number, vertical: boolean): void {
+    super.dragPlace(xa, ya, vertical);
+    this.swapDragEndpoints();
+  }
+
+  static diffFromInteger(x: number): number {
+    return Math.abs(x - Math.round(x));
+  }
+
+  /** Would RMS be a rounder number to display than peak? */
+  useRmsDisplay(peakValue: number): boolean {
+    const rmsMult = this.getRmsMultiplier();
+    const rmsVal = peakValue * rmsMult;
+    return (
+      rmsMult !== 1 &&
+      Math.abs(peakValue) > 1e-4 &&
+      VoltageElm.diffFromInteger(rmsVal * 1e4) < VoltageElm.diffFromInteger(peakValue * 1e4)
+    );
+  }
+
+  /**
+   * The RMS-to-peak multiplier for the current waveform: RMS = amplitude * getRmsMultiplier(),
+   * so 1/sqrt(2) for a sine, etc.
+   */
+  getRmsMultiplier(): number {
+    switch (this.waveform) {
+      case VoltageElm.WF_DC:
+        return 1;
+      case VoltageElm.WF_AC:
+        return 1 / Math.sqrt(2); // sine: Vpk/sqrt(2)
+      case VoltageElm.WF_SQUARE:
+        return 1; // square swings +A/-A, RMS=A
+      case VoltageElm.WF_TRIANGLE:
+        return 1 / Math.sqrt(3); // triangle: Vpk/sqrt(3)
+      case VoltageElm.WF_SAWTOOTH:
+        return 1 / Math.sqrt(3); // sawtooth: Vpk/sqrt(3)
+      case VoltageElm.WF_PULSE:
+        return Math.sqrt(this.dutyCycle); // pulse: Vpk*sqrt(d)
+      default:
+        return 1;
+    }
+  }
+
+  override getElmType(): string | null {
+    switch (this.waveform) {
+      case VoltageElm.WF_DC:
+      case VoltageElm.WF_VAR:
+        return 'voltage source';
+      case VoltageElm.WF_AC:
+        return 'A/C source';
+      case VoltageElm.WF_SQUARE:
+        return 'square wave gen';
+      case VoltageElm.WF_PULSE:
+        return 'pulse gen';
+      case VoltageElm.WF_SAWTOOTH:
+        return 'sawtooth gen';
+      case VoltageElm.WF_TRIANGLE:
+        return 'triangle gen';
+      case VoltageElm.WF_NOISE:
+        return 'noise gen';
+    }
+    return null;
+  }
+
+  getFrequencyOffset(): number {
+    return 5;
+  }
+  hasTimingOptions(): boolean {
+    return this.waveform === VoltageElm.WF_PULSE || this.waveform === VoltageElm.WF_SQUARE;
+  }
+  timeSpec(): boolean {
+    return this.hasFlag(VoltageElm.FLAG_TIME_SPEC) && this.hasTimingOptions();
+  }
+
+  setFrequency(newFreq: number): void {
+    const sim = this.sim;
+    const oldfreq = this.frequency;
+    this.frequency = newFreq;
+    const maxfreq = 1 / (8 * sim.maxTimeStep);
+    if (this.frequency > maxfreq) {
+      const confirm = VoltageElm.confirmAdjustTimestep;
+      if (confirm?.('Adjust timestep to allow for higher frequencies?') === true)
+        sim.maxTimeStep = 1 / (32 * this.frequency);
+      else this.frequency = maxfreq;
+    }
+    this.freqTimeZero =
+      this.frequency === 0 ? 0 : sim.t - (oldfreq * (sim.t - this.freqTimeZero)) / this.frequency;
+  }
+
+  setFrequencyFromTimes(highTime: number, lowTime: number): void {
+    const newFreq = 1 / (highTime + lowTime);
+    const newDuty = highTime / (highTime + lowTime);
+    this.setFrequency(newFreq);
+    this.dutyCycle = newDuty;
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    const isRail = this.isRailElm();
+    if (n === 0)
+      return new EditInfo(
+        this.waveform === VoltageElm.WF_DC ? 'Voltage' : 'Max Voltage',
+        this.maxVoltage,
+        -20,
+        20,
+      ).setUnitStep();
+    if (n === 1)
+      return EditInfo.createChoice(
+        'Waveform',
+        ['D/C', 'A/C', 'Square Wave', 'Triangle', 'Sawtooth', 'Pulse', 'Noise'],
+        this.waveform,
+      );
+    if (n === 2) return new EditInfo('DC Offset (V)', this.bias, -20, 20).setUnitStep();
+    if (n === 3) {
+      const ei = new EditInfo('Internal Resistance (ohms)', this.internalResistance);
+      ei.setNonNegative();
+      return ei;
+    }
+    if (
+      n === 4 &&
+      !(isRail && (this.waveform === VoltageElm.WF_DC || this.waveform === VoltageElm.WF_VAR))
+    ) {
+      const svFlag = isRail ? VoltageElm.FLAG_SHOW_VOLTAGE_RAIL : VoltageElm.FLAG_SHOW_VOLTAGE;
+      return EditInfo.createCheckbox('Show Voltage', (this.flags & svFlag) !== 0);
+    }
+    if (n === 5 && this.waveform === VoltageElm.WF_DC && !isRail)
+      return EditInfo.createCheckbox(
+        'Circle Symbol',
+        (this.flags & VoltageElm.FLAG_CIRCLE_SYMBOL) !== 0,
+      );
+    const fo = this.getFrequencyOffset();
+    if (this.waveform === VoltageElm.WF_DC || this.waveform === VoltageElm.WF_NOISE) return null;
+    const n2 = n - fo;
+    if (this.hasTimingOptions()) {
+      // square/pulse: dropdown + freq-or-time + phase + duty-or-time + rise
+      if (n2 === 0) {
+        const ei = EditInfo.createChoice(
+          'Specify As',
+          ['Frequency/Duty Cycle', 'High Time/Low Time'],
+          this.timeSpec() ? 1 : 0,
+        );
+        ei.newColumn = true;
+        return ei;
+      }
+      if (n2 === 1) {
+        if (this.timeSpec())
+          return new EditInfo('High Time (s)', this.dutyCycle / this.frequency, 0, 0);
+        return new EditInfo('Frequency (Hz)', this.frequency, 4, 500);
+      }
+      if (n2 === 2)
+        return new EditInfo(
+          'Phase Offset (degrees)',
+          (this.phaseShift * 180) / pi,
+          -180,
+          180,
+        ).setDimensionless();
+      if (n2 === 3) {
+        if (this.timeSpec())
+          return new EditInfo('Low Time (s)', (1 - this.dutyCycle) / this.frequency, 0, 0);
+        return new EditInfo('Duty Cycle', this.dutyCycle * 100, 0, 100).setDimensionless();
+      }
+      if (n2 === 4) return new EditInfo('Rise/Fall Time (s)', this.riseTime, 0, 0);
+    } else {
+      // other waveforms: freq + phase only
+      if (n2 === 0) return new EditInfo('Frequency (Hz)', this.frequency, 4, 500);
+      if (n2 === 1)
+        return new EditInfo(
+          'Phase Offset (degrees)',
+          (this.phaseShift * 180) / pi,
+          -180,
+          180,
+        ).setDimensionless();
+    }
+    return null;
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    const isRail = this.isRailElm();
+    if (n === 0) this.maxVoltage = ei.value;
+    if (n === 2) this.bias = ei.value;
+    if (n === 3) this.internalResistance = ei.value;
+    if (n === 4 && ei.checkbox !== null) {
+      const svFlag = isRail ? VoltageElm.FLAG_SHOW_VOLTAGE_RAIL : VoltageElm.FLAG_SHOW_VOLTAGE;
+      this.flags = ei.changeFlag(this.flags, svFlag);
+    }
+    if (n === 5 && this.waveform === VoltageElm.WF_DC && ei.checkbox !== null && !isRail) {
+      this.flags = ei.changeFlag(this.flags, VoltageElm.FLAG_CIRCLE_SYMBOL);
+      this.setPoints();
+    }
+    if (n === 1) {
+      const ow = this.waveform;
+      this.waveform = ei.choice?.selected ?? 0;
+      if (this.waveform === VoltageElm.WF_DC && ow !== VoltageElm.WF_DC) {
+        ei.newDialog = true;
+        this.bias = 0;
+      } else if (this.waveform !== ow) ei.newDialog = true;
+      // change duty cycle if we're changing to or from pulse
+      if (this.waveform === VoltageElm.WF_PULSE && ow !== VoltageElm.WF_PULSE)
+        this.dutyCycle = VoltageElm.defaultPulseDuty;
+      else if (ow === VoltageElm.WF_PULSE && this.waveform !== VoltageElm.WF_PULSE)
+        this.dutyCycle = 0.5;
+      this.setPoints();
+    }
+    const fo = this.getFrequencyOffset();
+    const n2 = n - fo;
+    if (this.hasTimingOptions()) {
+      if (n2 === 0 && ei.choice !== null) {
+        const oldFlags = this.flags;
+        this.flags =
+          ei.choice.selected === 1
+            ? this.flags | VoltageElm.FLAG_TIME_SPEC
+            : this.flags & ~VoltageElm.FLAG_TIME_SPEC;
+        if (this.flags !== oldFlags) ei.newDialog = true;
+      }
+      if (n2 === 1) {
+        if (this.timeSpec()) {
+          // high time changed; recompute frequency and duty cycle
+          const highTime = ei.value;
+          const lowTime = (1 - this.dutyCycle) / this.frequency;
+          if (highTime > 0 && lowTime > 0) this.setFrequencyFromTimes(highTime, lowTime);
+        } else if (ei.value !== 0) {
+          this.setFrequency(ei.value);
+        }
+      }
+      if (n2 === 2) {
+        this.phaseShift = (ei.value * pi) / 180;
+        this.phaseShift = ((this.phaseShift % (2 * pi)) + 2 * pi) % (2 * pi);
+      }
+      if (n2 === 3) {
+        if (this.timeSpec()) {
+          // low time changed; recompute frequency and duty cycle
+          const highTime = this.dutyCycle / this.frequency;
+          const lowTime = ei.value;
+          if (highTime > 0 && lowTime > 0) this.setFrequencyFromTimes(highTime, lowTime);
+        } else {
+          this.dutyCycle = ei.value * 0.01;
+        }
+      }
+      if (n2 === 4) this.riseTime = ei.value;
+    } else {
+      if (n2 === 0 && this.waveform !== VoltageElm.WF_DC && ei.value !== 0)
+        this.setFrequency(ei.value);
+      if (n2 === 1) {
+        this.phaseShift = (ei.value * pi) / 180;
+        this.phaseShift = ((this.phaseShift % (2 * pi)) + 2 * pi) % (2 * pi);
+      }
+    }
+  }
+
   override isVoltageElm(): boolean {
     return true;
   }
@@ -267,6 +527,9 @@ export class VoltageElm extends CircuitElm {
 export class DCVoltageElm extends VoltageElm {
   override getClassName(): string {
     return 'DCVoltageElm';
+  }
+  override getShortcut(): number {
+    return 'v'.charCodeAt(0);
   }
 }
 

@@ -11,6 +11,7 @@
 
 import type { Point } from '@circuitjs-next/engine';
 import { CircuitElm, elementType, type ElementType } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 import { unescapeToken } from '../escape.ts';
 import { parseJavaDouble, parseJavaInt } from '../java.ts';
 import { modelsFor } from '../models/ModelLibrary.ts';
@@ -79,6 +80,8 @@ export class TransistorElm extends CircuitElm {
 
   coll: Point[] = [];
   emit: Point[] = [];
+  /** The model list last shown by getEditInfo, which setEditValue indexes into. */
+  models: TransistorModel[] | null = null;
 
   override getClassName(): string {
     return 'TransistorElm';
@@ -130,6 +133,7 @@ export class TransistorElm extends CircuitElm {
     this.model = model;
     this.modelName = model.name; // in case we couldn't find that model
     this.vcrit = vt * Math.log(vt / (Math.sqrt(2) * model.satCur));
+    this.noDiagonal = true;
   }
 
   override nonLinear(): boolean {
@@ -472,6 +476,83 @@ export class TransistorElm extends CircuitElm {
     if (n === 1) return -this.ic;
     return -this.ie;
   }
+
+  /** The circle around the symbol, a setting shared by every transistor (upstream static). */
+  hasCircle(): boolean {
+    return (modelsFor(this.sim).transistorGlobalFlags & TransistorElm.FLAG_CIRCLE) !== 0;
+  }
+
+  override getElmType(): string {
+    return 'transistor';
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    if (n === 0) return new EditInfo('Beta/hFE', this.beta, 10, 1000).setDimensionless();
+    if (n === 1)
+      return EditInfo.createCheckbox('Swap E/C', (this.flags & TransistorElm.FLAG_FLIP) !== 0);
+    if (n === 2) return EditInfo.createCheckbox('Draw Circle', this.hasCircle());
+    if (n === 3) {
+      const models = modelsFor(this.sim).transistor.getModelList();
+      this.models = models;
+      let selected = 0;
+      for (let i = 0; i !== models.length; i++) if (models[i] === this.model) selected = i;
+      return EditInfo.createChoice(
+        'Model',
+        models.map((tm) => tm.getDescription()),
+        selected,
+      );
+    }
+    // model editing: later phase (upstream buttons 4 "Create New Model" and 5 "Edit Model")
+    return null;
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    if (n === 0) {
+      this.beta = ei.value;
+      this.setup();
+    }
+    if (n === 1) {
+      if (ei.checkbox?.state === true) this.flags |= TransistorElm.FLAG_FLIP;
+      else this.flags &= ~TransistorElm.FLAG_FLIP;
+      this.setPoints();
+    }
+    if (n === 2) {
+      const lib = modelsFor(this.sim);
+      lib.transistorGlobalFlags = ei.changeFlag(
+        lib.transistorGlobalFlags,
+        TransistorElm.FLAG_CIRCLE,
+      );
+      return;
+    }
+    if (n === 3) {
+      const models = this.models ?? modelsFor(this.sim).transistor.getModelList();
+      this.model = models[ei.choice?.selected ?? 0];
+      this.modelName = this.model.name;
+      this.setup();
+      ei.newDialog = true;
+      return;
+    }
+  }
+
+  override flipX(c2: number, count: number): void {
+    if (this.x === this.x2) this.flags ^= TransistorElm.FLAG_FLIP;
+    super.flipX(c2, count);
+  }
+
+  override flipY(c2: number, count: number): void {
+    if (this.y === this.y2) this.flags ^= TransistorElm.FLAG_FLIP;
+    super.flipY(c2, count);
+  }
+
+  override flipXY(xmy: number, count: number): void {
+    this.flags ^= TransistorElm.FLAG_FLIP;
+    super.flipXY(xmy, count);
+  }
+
+  setFlipped(flip: boolean): void {
+    if (((this.flags & TransistorElm.FLAG_FLIP) !== 0) !== flip)
+      this.flags ^= TransistorElm.FLAG_FLIP;
+  }
 }
 
 /** Placed from the menu as NPN; also what an XML `t` element is constructed as. */
@@ -479,11 +560,17 @@ export class NTransistorElm extends TransistorElm {
   override getClassName(): string {
     return 'NTransistorElm';
   }
+  override getShortcut(): number {
+    return 'n'.charCodeAt(0);
+  }
 }
 
 export class PTransistorElm extends TransistorElm {
   override getClassName(): string {
     return 'PTransistorElm';
+  }
+  override getShortcut(): number {
+    return 'p'.charCodeAt(0);
   }
   override initNew(): void {
     this.initTransistor(true);

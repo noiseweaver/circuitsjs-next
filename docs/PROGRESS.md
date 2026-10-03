@@ -1,5 +1,65 @@
 # Progress
 
+## 2026-10-02: Phase 5 (editor)
+
+### Done
+
+- Editing model ported from upstream `MouseManager` (`packages/app/src/editor/Editor.ts`): add,
+  select, drag selected, drag post, drag row and column (alt+shift, alt+meta), pan (alt or middle
+  drag, touch on empty space), grid snap, upstream's picking (`POSTGRABSQ`, `MINPOSTGRABSIZE`),
+  post stretching, wire splitting where a wire or post ends on a wire and where a new wire crosses
+  a junction (`wireDraggingDone`), rotate (upstream's flip pair about the snapped centre), mirror,
+  swap terminals, duplicate, split wire, and switch toggling (`doSwitch`). The geometry methods
+  (`drag`, `move`, `movePoint`, `flipX/Y/XY`, `flipPosts`, `creationFailed`, `dragPlace`,
+  `getHandleGrabbedClose`, `noDiagonal` ...) moved onto `CircuitElm` and the tier-1 subclasses.
+- Undo and redo (`History.ts`) are commands that, like upstream's `UndoManager`, restore whole-circuit
+  XML snapshots; one step per drag, edit, paste or command, capped at 200.
+- Copy, cut, paste and duplicate use upstream's clipboard text (`copyOfSelectedElms`, elements in
+  reverse) in localStorage under upstream's `circuitClipboard` key; paste reads it with RC_RETAIN
+  semantics (`Circuit.readRetain`) and offsets it clear of the original.
+- Property panel generated from upstream's `EditInfo` schemas, ported for every tier-1 element
+  (`packages/elements/src/edit`): numbers with upstream unit parsing and E12 steppers, text,
+  checkboxes and choices, including the fields that rebuild the panel (`newDialog`). Edits apply
+  while the circuit runs and undo like any other edit.
+- UI: a searchable palette grouped like upstream's Draw menu with live previews (click to arm,
+  then drag on the canvas, or drag straight onto it), the property panel with rotate, mirror,
+  swap, duplicate and delete, a right-click menu, Edit menu, undo and redo buttons, and Save,
+  Export link, Export text and Import text dialogs. Narrow screens get the panels as overlays.
+- Keyboard: upstream's element keys (`w r g c L s b v V z l n p N P a t d`), Ctrl/⌘ Z, Y, X, C,
+  V, D, A, S, O, Delete and Backspace, arrows to nudge, Escape, space to run and stop, Enter to edit
+  the selection, `?` for the list.
+- Save writes upstream's XML to a `.txt` file (upstream's default name). Export link gives a `ctz=`
+  link for this app and the same one for falstad.com.
+- Acceptance: `packages/app/e2e/editor.spec.ts` covers select and drag, building a running circuit
+  from the palette and keys, editing a value while running, copy, paste, delete, rotate,
+  rubber-band selection, undo, redo, save and export links. `packages/app/e2e/compat.spec.ts`
+  runs against the reference build: a circuit built here with the mouse opens in upstream from the
+  exported link and upstream saves it byte for byte the same; a circuit loaded and extended with
+  the mouse in upstream opens here and saves identically; all 23 golden circuits save the same in
+  both apps and upstream reads our saves back unchanged. The compat tests skip when
+  `.reference-site/` is missing (CI does not build it). Unit tests cover the editor in
+  `packages/app/src/editor/editor.test.ts`.
+
+### Next
+
+- Phase 6: scopes and measurement (scopes, hover info).
+
+### Open issues
+
+- `cct=` links are read but not written: upstream saves XML, and its `cct=` reader splits the
+  query on `=` and does not decode `%3D`, so an XML circuit cannot travel in `cct=`. Export uses
+  `ctz=`, which upstream reads.
+- UI choices that differ from upstream on purpose (listed in the `Editor.ts` header): a click
+  selects the element under the mouse and shift-click toggles; dragging an unselected element
+  moves just it; keyboard commands act on the selection, falling back to the hovered element; the
+  switch hit area includes its bottom and right edges so a click on the line a closed switch
+  lies on toggles it.
+- Not ported yet: model editing (the diode, transistor and MOSFET "Edit Model" buttons) and lead
+  splitting (`splitLeadsAt`).
+- Upstream names a `v` element read from a file `VoltageElm`; this app names it `DCVoltageElm`
+  (the palette's class). The saved file is the same.
+- The production bundle is 653 KB of JS (197 KB gzipped); still one chunk.
+
 ## 2026-10-02: Material restyle, Dark default, bundled fonts (between Phases 4 and 5)
 
 ### Done

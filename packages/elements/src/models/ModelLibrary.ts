@@ -20,6 +20,8 @@ export class ModelLibrary {
    * taken from the last one loaded.
    */
   transistorGlobalFlags = 0;
+  /** Upstream `MosfetElm.lastModelName`: the model for new MOSFETs, set when one is edited. */
+  mosfetLastModelName = 'default';
 
   clearDumpedFlags(): void {
     this.diode.clearDumpedFlags();

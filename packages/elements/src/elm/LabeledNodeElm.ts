@@ -9,6 +9,7 @@
 
 import { Point, type CircuitNode, type WireSegment } from '@circuitjs-next/engine';
 import { CircuitElm, elementType } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 import { unescapeToken } from '../escape.ts';
 import type { StringTokenizer } from '../StringTokenizer.ts';
 import type { XmlAttrReader, XmlAttrWriter } from '../xml.ts';
@@ -127,6 +128,35 @@ export class LabeledNodeElm extends CircuitElm {
 
   override getVoltageDiff(): number {
     return this.nodes[0].v;
+  }
+
+  isRotateText(): boolean {
+    return (this.flags & LabeledNodeElm.FLAG_ROTATE_TEXT) !== 0;
+  }
+
+  override getShortcut(): number {
+    return 'b'.charCodeAt(0);
+  }
+
+  override getElmType(): string {
+    return 'Labeled Node';
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    if (n === 0) {
+      const ei = new EditInfo('Text', 0, -1, -1);
+      ei.text = this.text;
+      return ei;
+    }
+    if (n === 1) return EditInfo.createCheckbox('Internal Node', this.isInternal());
+    if (n === 2) return EditInfo.createCheckbox('Rotate Text When Vertical', this.isRotateText());
+    return null;
+  }
+
+  override setEditValue(n: number, ei: EditInfo): void {
+    if (n === 0) this.text = ei.text ?? '';
+    if (n === 1) this.flags = ei.changeFlag(this.flags, LabeledNodeElm.FLAG_INTERNAL);
+    if (n === 2) this.flags = ei.changeFlag(this.flags, LabeledNodeElm.FLAG_ROTATE_TEXT);
   }
 }
 

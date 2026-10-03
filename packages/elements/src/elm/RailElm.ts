@@ -75,6 +75,14 @@ export class RailElm extends VoltageElm {
   override validate(): boolean {
     return this.internalResistance > 0 || this.validateRailNode(0);
   }
+
+  override getShortcut(): number {
+    return 'V'.charCodeAt(0);
+  }
+
+  override getDragVertical(requestedVertical: boolean): boolean {
+    return requestedVertical;
+  }
 }
 
 export const RailElmType = elementType('RailElm', RailElm);

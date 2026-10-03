@@ -8,6 +8,7 @@
 // License, or (at your option) any later version. See LICENSE.
 
 import { CircuitElm, elementType } from '../CircuitElm.ts';
+import { EditInfo } from '../edit/EditInfo.ts';
 import { parseJavaDouble } from '../java.ts';
 import type { StringTokenizer } from '../StringTokenizer.ts';
 import type { XmlAttrReader, XmlAttrWriter } from '../xml.ts';
@@ -46,6 +47,24 @@ export class ResistorElm extends CircuitElm {
 
   override stamp(): void {
     this.sim.stampResistor(this.nodes[0], this.nodes[1], this.resistance);
+  }
+
+  override getElmType(): string {
+    return 'resistor';
+  }
+
+  override getEditInfo(n: number): EditInfo | null {
+    // ohmString doesn't work here on linux
+    if (n === 0) return new EditInfo('Resistance (ohms)', this.resistance, 0, 0);
+    return null;
+  }
+
+  override setEditValue(_n: number, ei: EditInfo): void {
+    this.resistance = ei.value <= 0 ? 1e-9 : ei.value;
+  }
+
+  override getShortcut(): number {
+    return 'r'.charCodeAt(0);
   }
 }
 
